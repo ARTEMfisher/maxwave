@@ -1,0 +1,46 @@
+name: Tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
+      - name: Python tests
+        run: python -m unittest discover -s tests -v
+      - name: Python syntax
+        run: python -m compileall -q maxwave bridge
+      - name: Music routing tests
+        run: node bridge/test-core.js
+      - name: JavaScript agents syntax
+        run: node --check bridge/agent.js
+      - name: Player helper syntax
+        run: node --check bridge/player-agent.js
+      - name: POSIX starter syntax
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python -c "from pathlib import Path; s=Path('scripts/templates/start-posix.in').read_text().replace('@PYTHON_CASES@', 'macos-arm64) python_url=x;python_sha=x;;'); Path('starter-test.sh').write_text(s)"
+          sh -n starter-test.sh
+      - name: Windows starter PowerShell syntax
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $s=[IO.File]::ReadAllText('scripts/templates/start-windows.in')
+          $s=$s.Substring($s.LastIndexOf('#PS-BEGIN')+9).Replace('@PYTHON_CASES@', "'AMD64' { `$key='windows-x64'; `$pythonUrl='x'; `$pythonSha='x' }")
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($s,[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object {Write-Error $_}; exit 1 }

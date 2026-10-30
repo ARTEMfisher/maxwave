@@ -1,0 +1,17 @@
+const assert=require('node:assert/strict'), c=require('./music-core');
+for(const t of ['включи свет','включи телевизор','включи лампу','сколько времени','не включай музыку','включи видео на ютуб','поставь таймер на пять минут','включи новости','включи пылесос','запусти увлажнитель','пауза'])assert.equal(c.classify(t,false),null,t);
+for(const [s,q,type]of [['Включи "Du hast" группы Rammstein','du hast rammstein','song'],['включи кишлак эй','кишлак эй','auto'],['включи Rammstein','rammstein','auto'],['включи альбом Mutter группы Rammstein','mutter rammstein','album'],['включи группу Rammstein','rammstein','artist'],['включи песню свет','свет','song']]){let r=c.classify(s,false);assert.ok(r,s);assert.equal(r.query,q);assert.equal(r.mediaType,type);}
+assert.deepEqual(c.classify('включи музыку',false),{kind:'resume'});assert.deepEqual(c.classify('поставь музыку на паузу',true),{kind:'pause'});
+const s={state:1,final:true,started:true,text:'включи музыку',requestText:'включи музыку',id:'12345678-1234-1234-1234-123456789abc'};assert.ok(c.finalRequest(s));for(const patch of [{final:false},{started:false},{state:2},{requestText:'старый текст'},{id:'bad'}])assert.equal(c.finalRequest({...s,...patch}),null);
+let d=new c.Dedupe();assert.ok(d.accept('x',0));assert.equal(d.accept('x',100),false);assert.ok(d.accept('x',300001));for(let i=0;i<100;i++)d.accept(String(i),300002);assert.equal(d.seen.size,64);console.log('Music entity forms, household exclusions, final recognition and duplicate protection: passed');
+
+for(const[t,r]of [['перемотай вперед на 30 секунд',{kind:'seek',offset:30000}],['перемотай на две минуты назад',{kind:'seek',offset:-120000}],['перемотай на отметку 1:30',{kind:'seek',position:90000}],['начни песню сначала',{kind:'seek',position:0}],['перемотай вперед на полминуты',{kind:'seek',offset:30000}],['продолжи',{kind:'resume'}],['предыдущий',{kind:'previous'}],['следующий',{kind:'next'}]])assert.deepEqual(c.classify(t,true),r,t);
+assert.equal(c.classify('поставь таймер на две минуты',true),null);assert.equal(c.classify('перемотай на три собаки',true),null);console.log('Pause, resume, track navigation, relative and absolute seeks: passed');
+
+for(const [t,k]of [['далее','next'],['дальше','next'],['следующий','next'],['стоп','pause'],['хватит','pause'],['играй','resume'],['назад','previous']])assert.equal(c.classify(t,true).kind,k);
+assert.equal(c.classify('включи мою волну',true).kind,'personal');assert.equal(c.classify('включи что-нибудь энергичное',true).mood,'Energize');assert.equal(c.classify('включи грустную музыку',true).mood,'Sad');assert.equal(c.classify('включи песню Грустный дэнс',true).kind,'search');console.log('Quick synonyms and flow requests: passed');
+
+
+for(const [s,r] of [['включи видео',{kind:'mode',mode:'video',explicit:true}],['включи аудио',{kind:'mode',mode:'audio',explicit:true}],['что играет',{kind:'announce',explicit:true}],['поставь лайк',{kind:'rating',value:true}],['не нравится',{kind:'rating',value:false}],['сними лайк',{kind:'rating',value:null}],['далее',{kind:'next'}]])assert.deepEqual(c.classify(s,true),r,s);assert.equal(c.classify('включи видео',false),null);assert.equal(c.classify('не включай видео',true),null);console.log('Audio/video, metadata and ratings: passed');
+
+assert.equal(c.classify('Включи Пошлая Молли Буду твоим пёсиком',true).query,'пошлая молли буду твоим песиком');assert.equal(c.classify('включи тв',true),null);console.log('Regression: TV token must not match твоим: passed');

@@ -1,0 +1,51 @@
+#!/bin/sh
+# MaxWave starter: verified downloads, automatic unpacking, no global Python install.
+set -eu
+system=$(uname -s);machine=$(uname -m)
+case "$machine" in arm64|aarch64) arch=arm64;; x86_64|amd64) arch=x64;; *) echo 'Нужна 64-битная ОС ARM64 или x64.'; exit 1;; esac
+case "$system" in Darwin) os=macos;; Linux) os=linux;; *) echo 'Для Windows используйте MaxWave-Windows.cmd.'; exit 1;; esac
+key="$os-$arch"
+case "$key" in
+@PYTHON_CASES@
+ *) echo 'Эта платформа пока не поддерживается.';exit 1;;
+esac
+fetch() {
+ if command -v curl >/dev/null 2>&1; then curl --fail --location --proto '=https' --tlsv1.2 --retry 2 "$1" -o "$2"
+ elif command -v wget >/dev/null 2>&1; then wget --https-only -O "$2" "$1"
+ else echo 'Нужен curl или wget.';exit 1;fi
+}
+verify() {
+ if command -v sha256sum >/dev/null 2>&1;then got=$(sha256sum "$1" | cut -d ' ' -f 1)
+ else got=$(shasum -a 256 "$1" | cut -d ' ' -f 1);fi
+ [ "$got" = "$2" ] || { echo 'Ошибка SHA256: файл повреждён. Запуск отменён.';exit 1; }
+}
+work=$(mktemp -d "${TMPDIR:-/tmp}/maxwave.XXXXXXXX")
+trap 'rm -rf "$work"' EXIT HUP INT TERM
+runtime="$HOME/.maxwave-runtime/$key"
+python="$runtime/python/bin/python3"
+if [ ! -x "$python" ]; then
+ echo 'Подготавливаю переносимый Python…'
+ fetch "$python_url" "$work/python.tar.gz";verify "$work/python.tar.gz" "$python_sha"
+ mkdir -p "$runtime";tar -xzf "$work/python.tar.gz" -C "$runtime"
+fi
+export PYTHONNOUSERSITE=1
+install="$HOME/MaxWave"
+if [ -d "$install" ] && [ ! -f "$install/.maxwave-project" ];then
+ echo 'Каталог ~/MaxWave уже существует и не принадлежит этому установщику. Переименуйте его и повторите запуск.';exit 1
+fi
+if [ ! -f "$install/.maxwave-version" ] || [ "$(cat "$install/.maxwave-version" 2>/dev/null || true)" != '0.1.0' ];then
+fetch '@BUNDLE_URL@' "$work/maxwave.zip"
+verify "$work/maxwave.zip" '@BUNDLE_SHA@'
+"$python" - "$work/maxwave.zip" "$HOME" <<'PY'
+import pathlib,sys,zipfile
+archive=pathlib.Path(sys.argv[1]);root=pathlib.Path(sys.argv[2]).resolve()
+with zipfile.ZipFile(archive) as z:
+ for i in z.infolist():
+  p=pathlib.PurePosixPath(i.filename)
+  if not p.parts or p.parts[0]!='MaxWave' or p.is_absolute() or '..' in p.parts or '\\' in i.filename:raise RuntimeError('Invalid bundle path')
+  if not (root/i.filename).resolve().is_relative_to(root/'MaxWave'):raise RuntimeError('Invalid destination')
+ z.extractall(root)
+PY
+fi
+cd "$install"
+"$python" main.py "$@"

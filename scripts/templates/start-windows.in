@@ -1,0 +1,43 @@
+@echo off
+setlocal
+set "MAXWAVE_STARTER=%~f0"
+powershell.exe -NoProfile -Command "$s=[IO.File]::ReadAllText($env:MAXWAVE_STARTER); & ([scriptblock]::Create($s.Substring($s.LastIndexOf('#PS-BEGIN')+9)))"
+if errorlevel 1 pause
+exit /b
+#PS-BEGIN
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$arch = $env:PROCESSOR_ARCHITECTURE
+if ($env:PROCESSOR_ARCHITEW6432) { $arch = $env:PROCESSOR_ARCHITEW6432 }
+switch ($arch.ToUpperInvariant()) {
+@PYTHON_CASES@
+ default { throw 'Requires 64-bit Windows x64 or ARM64.' }
+}
+function Fetch($url,$path) { Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path }
+function Verify($path,$hash) { if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() -ne $hash) { throw 'SHA256 mismatch. Installation cancelled.' } }
+$work = Join-Path ([IO.Path]::GetTempPath()) ('maxwave-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $work | Out-Null
+try {
+ $runtime = Join-Path $env:USERPROFILE ('.maxwave-runtime\' + $key)
+ $python = Join-Path $runtime 'python\python.exe'
+ if (-not (Test-Path -LiteralPath $python)) {
+  Write-Host 'Preparing portable Python...'
+  $archive=Join-Path $work 'python.tar.gz'; Fetch $pythonUrl $archive; Verify $archive $pythonSha
+  New-Item -ItemType Directory -Force -Path $runtime | Out-Null
+  & tar.exe -xzf $archive -C $runtime
+  if ($LASTEXITCODE -ne 0) { throw 'Python extraction failed. Windows 10/11 tar.exe is required.' }
+ }
+ $install = Join-Path $env:USERPROFILE 'MaxWave'
+ if ((Test-Path -LiteralPath $install) -and -not (Test-Path -LiteralPath (Join-Path $install '.maxwave-project'))) { throw '~/MaxWave already exists and is not owned by this installer. Rename it first.' }
+ $versionFile=Join-Path $install '.maxwave-version'
+ $ready=(Test-Path -LiteralPath $versionFile) -and ([IO.File]::ReadAllText($versionFile).Trim() -eq '0.1.0')
+ if (-not $ready) {
+ $bundle=Join-Path $work 'maxwave.zip';Fetch '@BUNDLE_URL@' $bundle;Verify $bundle '@BUNDLE_SHA@'
+ # All entries belong to the checksum-pinned release created by MaxWave.
+ Expand-Archive -LiteralPath $bundle -DestinationPath $env:USERPROFILE -Force
+ }
+ $env:PYTHONNOUSERSITE='1'
+ Push-Location $install
+ try { & $python 'main.py';if ($LASTEXITCODE -ne 0) { throw 'Installer failed; see the message above.' } } finally { Pop-Location }
+} finally { Remove-Item -LiteralPath $work -Recurse -Force }

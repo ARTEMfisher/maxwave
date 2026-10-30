@@ -1,0 +1,24 @@
+{
+  "apps": [
+    {
+      "file": "apps/Happ-4.9.0.apk",
+      "package": "su.happ.proxyutility",
+      "sha256": "47aac2a2310553ca85ef390c2ae1674d79d9d70c215ef36a35cdf433f5b8323d"
+    },
+    {
+      "file": "apps/GmsCore.apk",
+      "package": "app.revanced.android.gms",
+      "sha256": "62119f040d629a9cd3225f280649a464936730c6466cafb5b9dd5ded14269a65"
+    },
+    {
+      "file": "apps/ReVanced-Manager.apk",
+      "package": "app.revanced.manager.flutter",
+      "sha256": "cba4c461553ea74eb25a7b2e1842419c7f4f40adc619b10d518c114204b7e846"
+    },
+    {
+      "file": "apps/YouTube-Music-ReVanced-8.12.54.apk",
+      "package": "app.rvx.android.apps.youtube.music",
+      "sha256": "289e3aadd485e234a71ca916bc8c7fce1c8d93c31b79f0bd432f133de790dc8f"
+    }
+  ]
+}
