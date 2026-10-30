@@ -17,3 +17,6 @@ __pycache__/
 .env
 .env.*
 .DS_Store
+
+station/assets/
+station/maxwaved

@@ -21,21 +21,15 @@ def app_uid(adb):
  return int(m.group(1))
 
 def vpn(adb):
- text=adb.shell('dumpsys','connectivity');uid=app_uid(adb)
- agents=[line for line in text.splitlines() if 'NetworkAgentInfo{' in line and 'VPN' in line]
+ from .vpn import policy
+ uid,policies=policy(adb)
  print('UID YouTube Music:',uid)
- print('VPN-сеть Android:','обнаружена' if agents else 'не обнаружена')
- for line in agents:
-  ranges=re.search(r'Uids:\s*<\{([^}]*)\}>',line)
-  routed=False
-  if ranges:
-   for token in ranges.group(1).split(','):
-    ends=token.strip().split('-')
-    if all(x.isdigit() for x in ends):
-     lo=int(ends[0]);hi=int(ends[-1]);routed|=lo<=uid<=hi
-  print(' VPN VALIDATED:', 'VALIDATED' in line, '; UID включён в опубликованные диапазоны:',routed if ranges else 'диапазоны не показаны')
- print('Интерфейсы:',adb.shell('ip','-o','link','show').replace('\n','\n '))
- print('Наличие tun/VPN само по себе не доказывает доступность конкретного сервера подписки. Следующий пункт делает HTTPS-проверку от UID музыкального приложения.')
+ print('Always-on:',adb.shell('settings','get','secure','always_on_vpn_app'))
+ print('Блокировка без VPN:',adb.shell('settings','get','secure','always_on_vpn_lockdown'))
+ print('VPN Android:',policies or 'не обнаружен')
+ print('Только YouTube Music:',bool(policies) and all(p==[(uid,uid)] for p in policies))
+ print('Правильно: Happ → Прокси для выбранных приложений → ВКЛ; одна галочка YouTube Music. После изменений переподключите VPN. Алиса, ADB и системные службы должны идти напрямую.')
+
 
 def network(adb):
  from .station import owned,_root_script
@@ -49,14 +43,12 @@ def network(adb):
  print('Это тест маршрута UID YouTube Music, а не тест всех узлов Happ. Состояние/задержку конкретных узлов смотрите в Happ.')
 
 def player(cfg,adb):
- from .station import start_server
- start_server(cfg)
- sys.path.insert(0,str(ROOT/'bridge'))
- from java_agent import JavaAgent
- pid=int(adb.shell('pidof','com.yandex.io.sdk').split()[0])
- agent=JavaAgent(pid,(ROOT/'bridge/read-only-agent.js').read_text())
- try:print(json.dumps(agent.script.exports_sync.inspect(),ensure_ascii=False,indent=2))
- finally:agent.close()
+ text=adb.shell('dumpsys','media_session')
+ lines=text.splitlines();inside=False
+ for line in lines:
+  if line.startswith('    ') and not line.startswith('      '):inside=PACKAGE in line
+  if inside:print(line)
+
 
 def main():
  ap=__import__('argparse').ArgumentParser();ap.add_argument('--test',choices=['info','apps','vpn','network','player']);args=ap.parse_args()
@@ -76,5 +68,5 @@ def main():
     mirror(cfg)
    elif c=='7':print('Проверьте: «Алиса, включи Rammstein»; «пауза»; «продолжи»; «перемотай вперёд на 30 секунд»; «что играет»; «включи видео/аудио». Короткое «далее» без обращения не входит в словарь модели. Лайк/дизлайк меняют реальные оценки — тестируйте на своё усмотрение.')
    elif c=='8':
-    p=STATE/'logs/bridge.log';print('\n'.join(p.read_text(encoding='utf-8').splitlines()[-25:]) if p.exists() else 'Журнала пока нет.')
+    print(adb.root('tail','-n','25',REMOTE+'/daemon.log'))
   except (UserError,subprocess.TimeoutExpired) as e:print('Ошибка теста:',e)

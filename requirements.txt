@@ -1,5 +1,1 @@
-frida==17.24.3
-frida-tools==14.11.0
-requests==2.34.2
-yt-dlp==2026.10.26
-ytmusicapi==1.12.3
+# Desktop installer uses only the Python standard library.

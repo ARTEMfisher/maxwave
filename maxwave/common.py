@@ -1,9 +1,11 @@
 """Shared, dependency-free configuration, downloads, archive and ADB helpers."""
 from __future__ import annotations
 import hashlib,ipaddress,json,os,pathlib,platform,re,shlex,shutil,stat,subprocess,sys,tarfile,tempfile,urllib.request,zipfile
+for _stream in (sys.stdout,sys.stderr):
+ if hasattr(_stream,'reconfigure'):_stream.reconfigure(encoding='utf-8',errors='replace')
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 STATE=ROOT/'.station'
-REMOTE='/data/local/tmp/maxwave'
+REMOTE='/data/local/tmp/maxwave-native'
 PACKAGE='app.rvx.android.apps.youtube.music'
 PLATFORMS={'macos-arm64':'macOS / Apple Silicon','macos-x64':'macOS / Intel','windows-x64':'Windows / x64','windows-arm64':'Windows / ARM64','linux-x64':'Linux / x64','linux-arm64':'Linux / ARM64 (системные adb и scrcpy)'}
 class UserError(RuntimeError):pass
@@ -123,26 +125,16 @@ class Adb:
 def menu(title,items):
  print('\n'+title)
  for key,label in items:print(f' {key}. {label}')
- return input('> ').strip()
+ try:return input('> ').strip()
+ except EOFError:return '0'
 
 def cli(fn):
  try:fn()
  except (UserError,subprocess.TimeoutExpired,subprocess.CalledProcessError,urllib.error.URLError) as e:print('\nОшибка:',e);raise SystemExit(1)
  except KeyboardInterrupt:print('\nОстановлено пользователем.');raise SystemExit(130)
 
-def runtime_python():return ROOT/'.venv'/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
+def runtime_python():return pathlib.Path(sys.executable)
 
 def ensure_runtime(reexec=True):
- """Install into a project venv, never into the system Python."""
- py=runtime_python()
- if pathlib.Path(sys.prefix).resolve()==(ROOT/'.venv').resolve():return
- if not py.exists():
-  import venv
-  print('Подготавливаю изолированные зависимости Python…');venv.EnvBuilder(with_pip=True).create(ROOT/'.venv')
- stamp=ROOT/'.venv'/'.maxwave-ready'
- reqhash=sha256(ROOT/'requirements.txt')
- if not stamp.exists() or stamp.read_text()!=reqhash:
-  subprocess.run([str(py),'-m','pip','install','--disable-pip-version-check','-r',str(ROOT/'requirements.txt')],check=True)
-  stamp.write_text(reqhash)
- if reexec:
-  raise SystemExit(subprocess.call([str(py),*sys.argv]))
+ """The desktop installer no longer runs the music service or needs pip packages."""
+ return

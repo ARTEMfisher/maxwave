@@ -96,7 +96,7 @@ def main():
  selected=args.platform or choose_platform()
  old=load_config() if (STATE/'config.json').exists() else {}
  ip=args.ip or input('IPv4 Яндекс Станции'+(' ['+old['target']+']' if old.get('target') else '')+': ').strip() or old.get('target','')
- cfg={**old,'target':target_address(ip),'platform':selected,'frida_port':27043,'root_dir':REMOTE,'tools':resources(selected)}
+ cfg={**old,'target':target_address(ip),'platform':selected,'root_dir':REMOTE,'tools':resources(selected)}
  save_config(cfg);verify_apps()
  if args.download_only or selected!=host_platform():
   print('Ресурсы скачаны и распакованы. Установка на станцию не запускалась.');return

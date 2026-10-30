@@ -5,10 +5,10 @@ from .station import request_stop,owned
 
 def restore(cfg,dry_run=False,remove_apps=False):
  print('ЭКСПЕРИМЕНТАЛЬНЫЙ ОТКАТ: плохо протестирован. Это отключение MaxWave, не восстановление заводской прошивки, root или OTA.')
- print('План: остановить мост; остановить только его Frida; закрыть ReVanced; вернуть интерфейс Яндекса.')
+ print('План: остановить мост; отключить автозапуск только сервиса MaxWave; закрыть ReVanced; вернуть интерфейс Яндекса.')
  if remove_apps:print('Удалить только APK, которых не было до установки MaxWave.')
  if dry_run:print('DRY RUN: ни одна команда изменения не выполнена.');return
- if not request_stop():raise UserError('Не удалось корректно остановить мост. Закройте его окно и повторите откат.')
+ if not request_stop(cfg):raise UserError('Не удалось корректно остановить мост. Посмотрите журнал станции и повторите откат.')
  adb=Adb(cfg);adb.connect()
  if owned(adb):print(adb.root('/system/bin/sh',REMOTE+'/stop.sh'))
  if adb.package_installed(PACKAGE):adb.shell('am','force-stop',PACKAGE)

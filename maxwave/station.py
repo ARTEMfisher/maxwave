@@ -1,7 +1,9 @@
-"""Step 2: prepare the already-rooted 0921 Station; never flash partitions."""
-import argparse,json,lzma,pathlib,shlex,subprocess,tempfile,time
+"""Install the autonomous Station service; no Android flashing or host music process."""
+import argparse,json,pathlib,secrets,shlex,subprocess,tempfile,time
 from .common import *
-MARKER='maxwave-v1'
+MARKER='maxwave-station-native-v1'
+BOOT='/data/local/tmp/myscript-max.sh'
+BOOT_BLOCK=f'\n# BEGIN MaxWave autonomous\n[ -f {REMOTE}/enabled ] && /system/bin/sh {REMOTE}/start.sh\n# END MaxWave autonomous\n'
 
 def _root_script(adb,content):
  with tempfile.TemporaryDirectory(prefix='maxwave-') as td:
@@ -10,87 +12,97 @@ def _root_script(adb,content):
 
 def owned(adb):
  result=adb.shell('sh','-c',f'if [ -d {REMOTE} ]; then cat {REMOTE}/owner 2>/dev/null || true; else echo absent; fi')
- if result not in (MARKER,'absent'):raise UserError('Каталог '+REMOTE+' уже занят чужой установкой. Он не будет заменён.')
+ if result not in (MARKER,'absent'):raise UserError('Каталог '+REMOTE+' занят установкой без метки MaxWave. Автоматическая замена запрещена.')
  return result==MARKER
+
+def assets():
+ manifest=json.loads((ROOT/'native-manifest.json').read_text())
+ missing=[a for a in manifest['files'] if not (ROOT/a['file']).is_file() or sha256(ROOT/a['file'])!=a['sha256']]
+ if missing:
+  spec=json.loads((ROOT/'resources.json').read_text()).get('native_bundle')
+  if not spec:raise UserError('Нет комплектных ресурсов станции. Используйте полный пакет релиза; сборка из исходников ещё не готова.')
+  archive=download(spec['url'],ROOT/'.cache/native-assets.zip',spec['sha256']);extract(archive,ROOT)
+ for a in manifest['files']:
+  if not (ROOT/a['file']).is_file() or sha256(ROOT/a['file'])!=a['sha256']:raise UserError('Повреждён ресурс станции: '+a['file'])
+ return manifest
 
 def prepare(cfg,dry_run=False):
  adb=Adb(cfg);adb.connect();device,fw=adb.verify(root=True)
  if not adb.package_installed(PACKAGE):raise UserError('Сначала установите YouTube Music: шаг 1.')
- package=adb.shell('dumpsys','package',PACKAGE)
- if not re.search(r'\bversionName=8\.12\.54(?:\s|$)',package):raise UserError('Агент проверен только с YouTube Music 8.12.54 из пакета MaxWave.')
+ if not re.search(r'\bversionName=8\.12\.54(?:\s|$)',adb.shell('dumpsys','package',PACKAGE)):raise UserError('Нужен YouTube Music 8.12.54 из комплекта.')
+ from .vpn import require_youtube_only
+ require_youtube_only(adb)
  exists=owned(adb)
- print(f'Проверено: {device}, прошивка {fw}, root. Разделы Android не прошиваются.')
- print('Будет подготовлен '+REMOTE+', Frida ARM64 на loopback:27043 и диагностический probe.dex.')
- if dry_run:print('DRY RUN: ничего на станции не изменено.');return
- adb.shell('mkdir','-p',REMOTE)
+ boot=adb.root('cat',BOOT)
+ if 'myfs.ext4' not in boot or 'sepolicy-inject' not in boot:raise UserError('Неизвестный механизм постоянного root. Автозапуск не будет добавлен в неподтверждённый файл.')
+ if '# BEGIN MaxWave autonomous' in boot and BOOT_BLOCK.strip() not in boot:raise UserError('В файле запуска уже есть другой блок MaxWave; нужна ручная проверка.')
+ print(f'Проверено: {device}, прошивка {fw}, root. Будет установлен автономный сервис на станции.')
+ if dry_run:print('DRY RUN: ничего не изменено.');return
+ manifest=assets();adb.shell('mkdir','-p',REMOTE)
  if not exists:adb.shell('sh','-c',f'printf %s {shlex.quote(MARKER)} > {REMOTE}/owner')
- manifest=json.loads((ROOT/'resources.json').read_text());spec=manifest['frida_server']
- archive=download(spec['url'],ROOT/'.cache/frida-server.xz',spec['sha256'])
- unpacked=ROOT/'.cache/frida-server'
- with lzma.open(archive) as src,unpacked.open('wb') as dst:shutil.copyfileobj(src,dst)
- adb.push(unpacked,REMOTE+'/frida-server')
- adb.push(ROOT/'station/NetworkProbe.dex',REMOTE+'/NetworkProbe.dex')
- # Only runtime path variables, never a full environment dump or account configuration.
- exports=[]
- for key in ['BOOTCLASSPATH','SYSTEMSERVERCLASSPATH','ANDROID_ROOT','ANDROID_DATA']:
-  val=adb.shell('printenv',key)
-  if val:exports.append('export '+key+'='+shlex.quote(val))
- if not any(x.startswith('export ANDROID_ROOT=') for x in exports):exports.append('export ANDROID_ROOT=/system')
- if not any(x.startswith('export ANDROID_DATA=') for x in exports):exports.append('export ANDROID_DATA=/data')
- with tempfile.TemporaryDirectory() as td:
-  env=pathlib.Path(td)/'env.sh';env.write_text('\n'.join(exports)+'\n');adb.push(env,REMOTE+'/env.sh')
- for f in ('start.sh','stop.sh'):adb.push(ROOT/'station'/f,REMOTE+'/'+f)
- _root_script(adb,f'chmod 755 {REMOTE}/frida-server {REMOTE}/start.sh {REMOTE}/stop.sh\nchmod 644 {REMOTE}/NetworkProbe.dex {REMOTE}/env.sh')
+ if exists:request_stop(cfg)
+ with tempfile.TemporaryDirectory(prefix='maxwave-install-') as td:
+  stage=pathlib.Path(td);stage.chmod(0o700)
+  # Preserve the installation's IPC token; never display it.
+  token=''
+  if exists:
+   try:token=adb.root('cat',REMOTE+'/token')
+   except UserError:pass
+  if not re.fullmatch('[a-f0-9]{64}',token):token=secrets.token_hex(32)
+  p=stage/'token';p.write_text(token+'\n');p.chmod(0o600);adb.push(p,REMOTE+'/token')
+  java=(ROOT/'station/java-bridge.js').read_text();transport=(ROOT/'native/transport.js').read_text()
+  for role,name in [('sdk','agent.js'),('player','player-agent.js')]:
+   code=(ROOT/'bridge'/name).read_text().replace('send({','emit({')
+   core=(ROOT/'bridge/music-core.js').read_text() if role=='sdk' else ''
+   p=stage/(role+'.js');p.write_text(java+'\nvar Java=bridge;\nconst LOCAL_ROLE='+json.dumps(role)+';const LOCAL_TOKEN='+json.dumps(token)+';\n'+transport+'\n'+core+'\n'+code);p.chmod(0o600);adb.push(p,REMOTE+'/'+p.name)
+  exports=[]
+  for key in ['BOOTCLASSPATH','SYSTEMSERVERCLASSPATH','ANDROID_ROOT','ANDROID_DATA']:
+   value=adb.shell('printenv',key)
+   if value:exports.append('export '+key+'='+shlex.quote(value))
+  if not any(s.startswith('export BOOTCLASSPATH=') for s in exports):raise UserError('Окружение Android runtime недоступно.')
+  p=stage/'env.sh';p.write_text('\n'.join(exports)+'\n');adb.push(p,REMOTE+'/env.sh')
+ adb.push(ROOT/'station/assets',REMOTE+'/')
+ _root_script(adb,f'cp -R {REMOTE}/assets/. {REMOTE}/\nrm -rf {REMOTE}/assets')
+ for local,name in [('native-start.sh','start.sh'),('native-stop.sh','stop.sh'),('watchdog.sh','watchdog.sh'),('NetworkProbe.dex','NetworkProbe.dex'),('VpnAlwaysOn.dex','VpnAlwaysOn.dex')]:adb.push(ROOT/'station'/local,REMOTE+'/'+name)
+ _root_script(adb,f'chmod 755 {REMOTE} {REMOTE}/maxwaved {REMOTE}/frida-inject {REMOTE}/espeak-ng\nchmod 600 {REMOTE}/token {REMOTE}/env.sh {REMOTE}/sdk.js {REMOTE}/player.js')
+ if '# BEGIN MaxWave autonomous' not in boot:
+  _root_script(adb,f'[ -f {BOOT} ]\n[ -f {REMOTE}/boot-before-maxwave.sh ] || cp -p {BOOT} {REMOTE}/boot-before-maxwave.sh\nprintf %s {shlex.quote(BOOT_BLOCK)} >> {BOOT}')
+ if adb.package_installed('su.happ.proxyutility'):
+  previous=adb.shell('settings','get','secure','always_on_vpn_app')
+  cfg.setdefault('always_on_before',previous)
+  if previous in ('null','','su.happ.proxyutility'):
+   try:print(_root_script(adb,f'. {REMOTE}/env.sh\nexport CLASSPATH={REMOTE}/VpnAlwaysOn.dex\nexec app_process /system/bin VpnAlwaysOn enable'))
+   except UserError:print('Android не подтвердил Always-on Happ. Проверьте его вручную в настройках VPN; блокировка сети не включалась.')
+  else:print('Сохранён другой Always-on VPN:',previous)
  cfg['prepared']=True;cfg['device']={'device':device,'firmware':fw};save_config(cfg)
- print('Станция подготовлена. Автозапуск на станции и системные параметры не менялись.')
+ print('Установлено на станцию. Файл постоянного root сохранён; в него добавлен только блок запуска MaxWave. Разделы Android не прошивались.')
 
-def start_server(cfg):
- adb=Adb(cfg);adb.connect();adb.verify(root=True)
- if not owned(adb):raise UserError('Сначала подготовьте станцию: пункт 1.')
- print(adb.root('/system/bin/sh',REMOTE+'/start.sh'))
- port=int(cfg.get('frida_port',27043))
- adb.run('forward','tcp:'+str(port),'tcp:27043')
- return adb
-
-def request_stop(wait=12):
- from .lock import is_running
- if not is_running():return True
- (STATE/'stop.request').write_text('stop',encoding='ascii')
- end=time.monotonic()+wait
- while time.monotonic()<end:
-  if not is_running():return True
-  time.sleep(.25)
- return False
+def request_stop(cfg=None,wait=15):
+ cfg=cfg or load_config();adb=Adb(cfg);adb.connect()
+ if not owned(adb):return True
+ adb.root('/system/bin/sh',REMOTE+'/stop.sh')
+ for _ in range(wait):
+  if adb.shell('sh','-c',f'cat {REMOTE}/daemon.pid 2>/dev/null || true')=='':return True
+  time.sleep(1)
+ raise UserError('Сервис не подтвердил завершение. Повторный экземпляр запускаться не будет.')
 
 def start_background(cfg):
- from .lock import is_running
- if is_running():print('Мост уже запущен.');return
- STATE.mkdir(exist_ok=True);out=(STATE/'supervisor.log').open('a',encoding='utf-8')
- kwargs={'stdin':subprocess.DEVNULL,'stdout':out,'stderr':subprocess.STDOUT,'cwd':ROOT}
- if os.name=='nt':kwargs['creationflags']=subprocess.DETACHED_PROCESS|subprocess.CREATE_NEW_PROCESS_GROUP
- else:kwargs['start_new_session']=True
- subprocess.Popen([sys.executable,str(ROOT/'02_station.py'),'--run-only'],**kwargs);out.close()
- for _ in range(30):
-  if is_running():print('Мост запущен в фоне. Для остановки — пункт 3; диагностика — пункт 5.');return
-  time.sleep(.1)
- raise UserError('Фоновый процесс не запустился; смотрите .station/supervisor.log.')
+ adb=Adb(cfg);adb.connect();adb.verify(root=True)
+ if not owned(adb):raise UserError('Сначала выполните пункт 1.')
+ print(adb.root('/system/bin/sh',REMOTE+'/start.sh'))
+ print('Обработчик запущен НА СТАНЦИИ. Это окно и компьютер можно закрыть. Автозапуск проверяйте после перезагрузки.')
 
 def main():
- ap=argparse.ArgumentParser();ap.add_argument('--dry-run',action='store_true');ap.add_argument('--prepare-and-run',action='store_true');ap.add_argument('--run-only',action='store_true');args=ap.parse_args()
- if args.dry_run:prepare(load_config(),True);return
- ensure_runtime();cfg=load_config()
- if args.run_only:
-  from .runner import run
-  run(cfg);return
+ ap=argparse.ArgumentParser();ap.add_argument('--dry-run',action='store_true');ap.add_argument('--prepare-and-run',action='store_true');args=ap.parse_args();cfg=load_config()
+ if args.dry_run:prepare(cfg,True);return
  if args.prepare_and_run:prepare(cfg);start_background(cfg)
  while True:
-  c=menu('Настройка MaxWave: нужна прошивка 0921 с mysudo/root', [('1','Проверить и подготовить станцию'),('2','Запустить голосовой мост в фоне'),('3','Остановить мост'),('4','Снова открыть меню приложений и scrcpy'),('5','Перейти к диагностике (включая VPN)'),('0','Выход')])
+  c=menu('Автономный MaxWave: нужна прошивка 0921 с постоянным mysudo/root',[('1','Проверить и установить сервис на станцию'),('2','Включить сервис и автозапуск на станции'),('3','Отключить сервис и его автозапуск'),('4','Открыть приложения и scrcpy'),('5','Перейти к диагностике'),('0','Выход — сервис продолжает работать на станции')])
   if c=='0':return
   if c=='1':prepare(cfg)
   elif c=='2':start_background(cfg)
-  elif c=='3':print('Мост остановлен.' if request_stop() else 'Мост не завершился. Не запускайте второй экземпляр.')
+  elif c=='3':request_stop(cfg);print('Сервис и его автозапуск отключены.')
   elif c=='4':
    from .install import app_menu
    app_menu(cfg)
   elif c=='5':subprocess.run([sys.executable,str(ROOT/'03_diagnostics.py')],check=True)
-

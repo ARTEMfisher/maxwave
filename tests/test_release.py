@@ -23,7 +23,7 @@ class ReleaseTests(unittest.TestCase):
    (p/'apps-manifest.json').write_text(json.dumps({'apps':[{'file':'apps/test.apk','sha256':hashlib.sha256(apk.read_bytes()).hexdigest()}]}))
    (p/'resources.json').write_text(json.dumps({'repository':'example/maxwave','portable_python':{}}))
    with patch.object(b,'ROOT',p),patch.object(b,'DIST',p/'dist'):b.build()
-   with zipfile.ZipFile(p/'dist/maxwave-v0.1.0-bundle.zip') as z:
+   with zipfile.ZipFile(p/'dist/maxwave-v0.2.0-bundle.zip') as z:
     self.assertIn('MaxWave/apps/test.apk',z.namelist());self.assertNotIn('MaxWave/.station/secret.txt',z.namelist());self.assertNotIn('MaxWave/private.keystore',z.namelist());self.assertNotIn('MaxWave/PRIVATE.md',z.namelist());self.assertNotIn('MaxWave/private.py',z.namelist())
-   resource=json.loads((p/'resources.json').read_text());self.assertEqual(resource['apps_bundle']['sha256'],hashlib.sha256((p/'dist/maxwave-apps-v0.1.0.zip').read_bytes()).hexdigest())
+   resource=json.loads((p/'resources.json').read_text());self.assertEqual(resource['apps_bundle']['sha256'],hashlib.sha256((p/'dist/maxwave-apps-v0.2.0.zip').read_bytes()).hexdigest())
    text=(p/'dist/MaxWave-macOS.command').read_text();self.assertNotIn('@BUNDLE_SHA@',text)

@@ -88,7 +88,11 @@
     }
   },
   "apps_bundle": {
-    "url": "https://github.com/ARTEMfisher/maxwave/releases/download/v0.1.0/maxwave-apps-v0.1.0.zip",
+    "url": "https://github.com/ARTEMfisher/maxwave/releases/download/v0.2.0/maxwave-apps-v0.2.0.zip",
     "sha256": "eac79acdaef27eb8d3ac575989cf77ddb895649f337eda38fef3449e3b2b336a"
+  },
+  "native_bundle": {
+    "url": "https://github.com/ARTEMfisher/maxwave/releases/download/v0.2.0/maxwave-native-v0.2.0.zip",
+    "sha256": "bacfcd20dd708856a1352fd3f09438cf7c1830475730f1de64b5d4ce96535051"
   }
 }

@@ -3,7 +3,7 @@
 Only an explicit source allowlist enters a release. No publishing happens here.
 """
 import hashlib,json,pathlib,stat,zipfile
-ROOT=pathlib.Path(__file__).resolve().parents[1];DIST=ROOT/'dist';VERSION='0.1.0'
+ROOT=pathlib.Path(__file__).resolve().parents[1];DIST=ROOT/'dist';VERSION='0.2.0'
 
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def put(z,path,name):
@@ -21,10 +21,22 @@ def build():
  resources=json.loads((ROOT/'resources.json').read_text());repo=resources['repository']
  resources['apps_bundle']={'url':f'https://github.com/{repo}/releases/download/v{VERSION}/{apps.name}','sha256':sha(apps)}
  (ROOT/'resources.json').write_text(json.dumps(resources,indent=2)+'\n')
+ native_manifest=json.loads((ROOT/'native-manifest.json').read_text()) if (ROOT/'native-manifest.json').exists() else {'files':[]}
+ native_paths=[]
+ for a in native_manifest['files']:
+  p=ROOT/a['file']
+  if not p.is_file() or sha(p)!=a['sha256']:raise SystemExit('Missing or wrong native resource: '+a['file'])
+  native_paths.append(p)
+ native_zip=DIST/f'maxwave-native-v{VERSION}.zip'
+ with zipfile.ZipFile(native_zip,'w') as z:
+  for p in native_paths:put(z,p,p.relative_to(ROOT).as_posix())
+ resources['native_bundle']={'url':f'https://github.com/{repo}/releases/download/v{VERSION}/{native_zip.name}','sha256':sha(native_zip)}
+ (ROOT/'resources.json').write_text(json.dumps(resources,indent=2)+'\n')
  files=set()
- for pattern in ['main.py','01_install.py','02_station.py','03_diagnostics.py','04_restore.py','README.md','THIRD_PARTY.md','LICENSE','requirements.txt','resources.json','apps-manifest.json','.maxwave-project','.maxwave-version','maxwave/*.py','bridge/*.py','bridge/*.js','station/*.sh','station/*.java','station/*.dex','docs/*.md','tests/*.py','scripts/*.py','scripts/templates/*.in','.github/workflows/*.yml']:
+ for pattern in ['main.py','01_install.py','02_station.py','03_diagnostics.py','04_restore.py','README.md','THIRD_PARTY.md','LICENSE','requirements.txt','resources.json','apps-manifest.json','.maxwave-project','.maxwave-version','maxwave/*.py','bridge/*.py','bridge/*.js','station/*.sh','station/*.java','station/*.dex','station/*.js','station/licenses/*','native-manifest.json','native/*.go','native/go.mod','native/*.js','native/*.py','docs/*.md','tests/*.py','scripts/*.py','scripts/templates/*.in','.github/workflows/*.yml']:
   files.update(ROOT.glob(pattern))
  files.update(app_paths)
+ files.update(native_paths)
  # Fail closed if a private runtime/config accidentally enters the allowlist.
  for p in files:
   rel=p.relative_to(ROOT)
@@ -45,7 +57,7 @@ def build():
   for key,value in replacements.items():text=text.replace(key,value)
   data=text.replace('\n','\r\n').encode('utf-8') if filename.endswith('.cmd') else text.encode('utf-8')
   p=DIST/filename;p.write_bytes(data);p.chmod(0o755)
- assets=[apps,bundle,*[DIST/x for x in ('MaxWave-macOS.command','MaxWave-Linux.sh','MaxWave-Windows.cmd')],*app_paths]
+ assets=[apps,native_zip,bundle,*[DIST/x for x in ('MaxWave-macOS.command','MaxWave-Linux.sh','MaxWave-Windows.cmd')],*app_paths]
  (DIST/'SHA256SUMS.txt').write_text(''.join(sha(p)+'  '+p.name+'\n' for p in assets))
  print('\n'.join(str(p) for p in assets));return assets
 if __name__=='__main__':build()

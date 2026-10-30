@@ -6,6 +6,8 @@ import javax.net.ssl.HttpsURLConnection;
 import java.util.Arrays;
 public final class NetworkProbe {
  public static void main(String[] args) throws Exception {
+  Thread deadline=new Thread(() -> {try{Thread.sleep(15000);}catch(InterruptedException ignored){}System.err.println("PROBE_TIMEOUT");System.exit(124);});
+  deadline.setDaemon(true);deadline.start();
   if(args.length!=2)throw new IllegalArgumentException("UID URL required");
   int uid=Integer.parseInt(args[0]);URL url=new URL(args[1]);
   if(uid<1000||uid>=100000||!url.getProtocol().equals("https")||!Arrays.asList("music.youtube.com","www.youtube.com","www.google.com","api.ipify.org").contains(url.getHost())||url.getUserInfo()!=null)throw new IllegalArgumentException("Unsupported probe");
