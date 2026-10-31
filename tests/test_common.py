@@ -22,7 +22,7 @@ class CommonTests(unittest.TestCase):
    with zipfile.ZipFile(z,'w') as f:f.writestr('nested/a.txt','hello')
    c.extract(z,d/'out');self.assertEqual((d/'out/nested/a.txt').read_text(),'hello')
  def test_zip_traversal_and_symlink(self):
-  for name in ['../escape','/absolute','C:/escape','nested\\escape']:
+  for name in ['../escape','/absolute','C:/escape','nested\\..\\escape']:
    with self.subTest(name=name),tempfile.TemporaryDirectory() as d:
     d=pathlib.Path(d);z=d/'a.zip'
     with zipfile.ZipFile(z,'w') as f:f.writestr(name,'bad')
