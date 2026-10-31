@@ -97,7 +97,7 @@ def main():
  if args.dry_run:prepare(cfg,True);return
  if args.prepare_and_run:prepare(cfg);start_background(cfg)
  while True:
-  c=menu('Автономный MaxWave: нужна прошивка 0921 с постоянным mysudo/root',[('1','Проверить и установить сервис на станцию'),('2','Включить сервис и автозапуск на станции'),('3','Отключить сервис и его автозапуск'),('4','Открыть приложения и scrcpy'),('5','Перейти к диагностике'),('0','Выход — сервис продолжает работать на станции')])
+  c=menu('Автономный MaxWave: нужна прошивка 0921 с постоянным mysudo/root',[('1','Проверить и установить сервис на станцию'),('2','Включить сервис и автозапуск на станции'),('3','Отключить сервис и его автозапуск'),('4','Открыть приложения и scrcpy'),('5','Перейти к диагностике'),('6','Управление MaxWave через уже настроенный SSH'),('0','Выход — сервис продолжает работать на станции')])
   if c=='0':return
   if c=='1':prepare(cfg)
   elif c=='2':start_background(cfg)
@@ -106,3 +106,6 @@ def main():
    from .install import app_menu
    app_menu(cfg)
   elif c=='5':subprocess.run([sys.executable,str(ROOT/'03_diagnostics.py')],check=True)
+  elif c=='6':
+   from .ssh import manage_menu
+   manage_menu(cfg)
