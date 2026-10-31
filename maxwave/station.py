@@ -63,7 +63,7 @@ def prepare(cfg,dry_run=False):
   p=stage/'env.sh';p.write_text('\n'.join(exports)+'\n');adb.push(p,REMOTE+'/env.sh')
  adb.push(ROOT/'station/assets',REMOTE+'/')
  _root_script(adb,f'cp -R {REMOTE}/assets/. {REMOTE}/\nrm -rf {REMOTE}/assets')
- for local,name in [('native-start.sh','start.sh'),('native-stop.sh','stop.sh'),('watchdog.sh','watchdog.sh'),('NetworkProbe.dex','NetworkProbe.dex'),('VpnAlwaysOn.dex','VpnAlwaysOn.dex')]:adb.push(ROOT/'station'/local,REMOTE+'/'+name)
+ for local,name in [('native-start.sh','start.sh'),('youtube-music-autostart.sh','youtube-music-autostart.sh'),('native-stop.sh','stop.sh'),('watchdog.sh','watchdog.sh'),('NetworkProbe.dex','NetworkProbe.dex'),('VpnAlwaysOn.dex','VpnAlwaysOn.dex')]:adb.push(ROOT/'station'/local,REMOTE+'/'+name)
  _root_script(adb,f'chmod 755 {REMOTE} {REMOTE}/maxwaved {REMOTE}/frida-inject {REMOTE}/espeak-ng\nchmod 600 {REMOTE}/token {REMOTE}/env.sh {REMOTE}/sdk.js {REMOTE}/player.js')
  if '# BEGIN MaxWave autonomous' not in boot:
   _root_script(adb,f'[ -f {BOOT} ]\n[ -f {REMOTE}/boot-before-maxwave.sh ] || cp -p {BOOT} {REMOTE}/boot-before-maxwave.sh\nprintf %s {shlex.quote(BOOT_BLOCK)} >> {BOOT}')
